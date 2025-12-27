@@ -7,6 +7,8 @@ pub struct Slider {
     title: Cow<'static, str>,
     width: Size,
 
+    value: f64,
+
     on_changed: Option<EventHandler<f64>>,
 }
 
@@ -16,6 +18,7 @@ impl Slider {
             title: Cow::from("Slider"),
             width: Size::default(),
             on_changed: None,
+            value: 50.0,
         }
     }
 
@@ -33,11 +36,16 @@ impl Slider {
         self.on_changed = Some(EventHandler::new(on_changed));
         self
     }
+
+    pub fn value(mut self, value: f64) -> Self {
+        self.value = value.clamp(0.0, 100.0);
+        self
+    }
 }
 
 impl Render for Slider {
     fn render(&self) -> impl IntoElement {
-        let mut value = use_state(|| 50.0_f64);
+        let mut value = use_reactive(&self.value);
 
         use_side_effect({
             let on_changed = self
@@ -58,6 +66,7 @@ impl Render for Slider {
             )
             .center()
             .background(Color::from_hex("#464646").unwrap())
+            .corner_radius(16.0)
             .content(Content::Flex)
             .children([
                 rect()
