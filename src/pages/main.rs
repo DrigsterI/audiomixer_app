@@ -1,32 +1,17 @@
-use freya::prelude::*;
-use freya_radio::hooks::use_radio;
-use futures_channel::mpsc::UnboundedSender;
+use freya::{prelude::*, radio::use_radio};
 
-use crate::{Data, DataChannel, components::Slider, utils::CommandsOut};
+use crate::{
+    DataChannel,
+    components::Slider,
+    utils::{CommandsOut, SetVolumeProps, run_action},
+};
 
 #[derive(PartialEq)]
 pub struct Main {}
-impl Render for Main {
+impl Component for Main {
     fn render(&self) -> impl IntoElement {
-        let radio = use_radio::<Data, DataChannel>(DataChannel::DeviceInfoUpdate);
-        let device_info = use_reactive(
-            &radio
-                .read()
-                .device_info
-                .usb_info
-                .clone(),
-        );
-        let slider_radio = use_radio::<Data, DataChannel>(DataChannel::SlidersUpdate);
-        let sliders = use_reactive(
-            &slider_radio
-                .read()
-                .sliders
-                .clone(),
-        );
-        let tx_option = radio
-            .read()
-            .serial_out_tx
-            .clone();
+        let mut radio = use_radio(DataChannel::SlidersUpdate);
+        let tx_option = radio.read().serial_out_tx.clone();
 
         rect()
             .width(Size::percent(100.0))
@@ -44,24 +29,12 @@ impl Render for Main {
                                 label()
                                     .font_size(16.0)
                                     .font_weight(FontWeight::BOLD)
-                                    .text(match &*device_info.read() {
-                                        Some(device_info) => device_info
-                                            .product
-                                            .clone()
-                                            .unwrap_or("Unknown Device".to_string()),
-                                        None => "No device connected".to_string(),
-                                    })
+                                    .text("Device")
                                     .into(),
                                 label()
                                     .font_size(16.0)
                                     .font_weight(FontWeight::BOLD)
-                                    .text(match &*device_info.read() {
-                                        Some(device_info) => device_info
-                                            .serial_number
-                                            .clone()
-                                            .unwrap_or("No serial".to_string()),
-                                        None => "".to_string(),
-                                    })
+                                    .text(" - Audiomixer")
                                     .into(),
                             ]),
                     )
@@ -73,44 +46,38 @@ impl Render for Main {
                     .direction(Direction::Horizontal)
                     .padding(8.0)
                     .spacing(8.0)
-                    .children(if let Some(tx) = tx_option {
-                        let mut i = 0;
-                        sliders
+                    .children(
+                        radio
                             .read()
+                            .sliders
                             .iter()
-                            .map(|slider| {
-                                i += 1;
+                            .enumerate()
+                            .map(|(index, slider)| {
                                 Slider::new()
+                                    .title(slider.name.clone())
                                     .width(Size::flex(1.0))
-                                    .title(
-                                        slider
-                                            .name
-                                            .clone(),
-                                    )
-                                    .value(
-                                        slider
-                                            .volume
-                                            .into(),
-                                    )
+                                    .value(slider.volume as f64)
                                     .on_change({
-                                        let tx = tx.clone();
-                                        move |value| on_changed(i, value, tx.clone())
+                                        let slider_clone = slider.clone();
+                                        let tx = tx_option.clone();
+                                        move |val: f64| {
+                                            radio.write().sliders[index].volume = val as u8;
+                                            tx.clone()
+                                                .expect("Sender for commands is not set")
+                                                .unbounded_send(CommandsOut::SetVolume(
+                                                    SetVolumeProps {
+                                                        channel: index as u8 + 1,
+                                                        volume: val as u8,
+                                                    },
+                                                ))
+                                                .expect("Failed to send to channel");
+                                            run_action(&radio.read().sliders[index]);
+                                        }
                                     })
-                                    .into()
-                            })
-                            .collect()
-                    } else {
-                        vec![]
-                    })
+                                    .into_element()
+                            }),
+                    )
                     .into(),
             ])
     }
-}
-
-fn on_changed(channel: u8, value: f64, tx: UnboundedSender<CommandsOut>) {
-    let command = CommandsOut::SetVolume(crate::utils::SetVolumeProps {
-        channel,
-        volume: value as u8,
-    });
-    let _ = tx.unbounded_send(command);
 }

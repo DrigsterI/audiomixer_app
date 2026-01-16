@@ -125,3 +125,23 @@ pub fn get_received_payload(buffer: &[u8]) -> Result<CommandsIn, Box<dyn std::er
         Err(_) => Err(format!("Unknown command received: {:#04X?}", command).into()),
     }
 }
+
+pub fn send_command(port: &mut Box<dyn serialport::SerialPort>, command: CommandsOut) {
+    let mut buffer = Vec::new();
+
+    match command {
+        CommandsOut::RequestInfo => {
+            buffer.push(CommandOut::RequestInfo as u8);
+            buffer.push(0x00); // channel (unused)
+        }
+        CommandsOut::SetVolume(props) => {
+            buffer.push(CommandOut::SetVolume as u8);
+            buffer.push(props.channel + 1);
+            buffer.push(props.volume);
+        }
+    }
+
+    if let Err(e) = port.write_all(&buffer) {
+        eprintln!("Failed to send command: {}", e);
+    }
+}

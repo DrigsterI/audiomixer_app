@@ -43,27 +43,13 @@ impl Slider {
     }
 }
 
-impl Render for Slider {
+impl Component for Slider {
     fn render(&self) -> impl IntoElement {
         let mut value = use_reactive(&self.value);
 
-        use_side_effect({
-            let on_changed = self
-                .on_changed
-                .clone();
-            move || {
-                if let Some(on_changed) = &on_changed {
-                    on_changed.call(*value.read());
-                }
-            }
-        });
-
         rect()
             .height(Size::Fill)
-            .width(
-                self.width
-                    .clone(),
-            )
+            .width(self.width.clone())
             .center()
             .background(Color::from_hex("#464646").unwrap())
             .corner_radius(16.0)
@@ -77,20 +63,23 @@ impl Render for Slider {
                         label()
                             .font_size(36.0)
                             .font_weight(FontWeight::BOLD)
-                            .text(
-                                self.title
-                                    .clone(),
-                            ),
+                            .text(self.title.clone()),
                     )
                     .into(),
                 rect()
                     .height(Size::flex(1.0))
                     .padding(48.0)
                     .child(
-                        FreyaSlider::new(move |arg| {
-                            let val = arg.round();
-                            if val != *value.read() {
-                                value.set(val);
+                        FreyaSlider::new({
+                            let on_changed = self.on_changed.clone();
+                            move |arg: f64| {
+                                let val = arg.round();
+                                if val != *value.read() {
+                                    value.set(val);
+                                    if let Some(on_changed) = &on_changed {
+                                        on_changed.call(val);
+                                    }
+                                }
                             }
                         })
                         .size(Size::flex(1.0))
